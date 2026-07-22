@@ -10,12 +10,17 @@ A custom [Claude Code](https://code.claude.com/docs/en/statusline) status bar sc
 
 **Requirements:** Claude Code, [`jq`](https://jqlang.github.io/jq/), optional `git`, a [Nerd Font](https://www.nerdfonts.com/) in your terminal.
 
+On **Windows**, use [Git Bash](https://git-scm.com/download/win) for the commands below, put `jq` on PATH, and prefer [Windows Terminal](https://aka.ms/terminal) with a Nerd Font. Same script — no PowerShell port required. Longer platform notes: [ROADMAP.md](./ROADMAP.md).
+
 ```sh
 # macOS
 brew install jq
 
 # Ubuntu/Debian
 sudo apt-get install jq
+
+# Windows (example)
+# winget install jqlang.jq
 ```
 
 ```sh
@@ -23,7 +28,7 @@ cp statusline.sh ~/.claude/statusline.sh
 chmod +x ~/.claude/statusline.sh
 ```
 
-Add to `~/.claude/settings.json`:
+Add to `~/.claude/settings.json` (on Windows: `%USERPROFILE%\.claude\settings.json`):
 
 ```json
 {
@@ -36,10 +41,12 @@ Add to `~/.claude/settings.json`:
 }
 ```
 
+Use `~/...` or forward slashes in `command` (e.g. `C:/Users/you/.claude/statusline.sh`). Avoid unescaped `\`.
+
 | Setting | Purpose |
 |---------|---------|
 | `padding` | Extra horizontal spacing. `0` keeps the bar tight. |
-| `refreshInterval` | Re-runs the script every **N seconds** (not ms), so duration and git stay fresh while idle. |
+| `refreshInterval` | Re-runs every **N seconds** (not ms), so duration and git stay fresh while idle. |
 
 Restart Claude Code after changing settings.
 
@@ -75,7 +82,7 @@ These are **not** session-cumulative `cost.total_lines_added` / `total_lines_rem
   2. `$CLAUDE_CODE_MAX_CONTEXT_TOKENS` (if Claude Code exports it)
   3. `200000`
 - **Gauge tiers** (by used %): `<30` / `30–54` / `55–84` / `≥85`
-- **Color** (by remaining tokens): danger / warning thresholds from remaining headroom, not fixed 70%/90% used
+- **Color** (by remaining tokens): danger / warning from remaining headroom, not fixed 70%/90% used
 
 The script only **reads** what Claude Code provides (JSON and environment). It does **not** hardcode model → window size maps.
 
@@ -94,8 +101,8 @@ Claude Code often treats unrecognized model IDs as a **200k** window. If your pr
 
 | Variable | Role |
 |----------|------|
-| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Tells Claude Code what context size to assume (feeds `context_window_size` / statusline limit for non-Claude models). |
-| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | Capacity used for **auto-compact** math only; does not replace the statusline limit by itself. |
+| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Context size Claude Code assumes (feeds `context_window_size` / statusline limit for non-Claude models). |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | **Auto-compact** math only; does not replace the statusline limit by itself. |
 
 Requires **Claude Code ≥ 2.1.193** for these env vars to take effect (especially for non-Claude model IDs). Adjust the numbers to match your real model limit. Official reference: [Claude Code environment variables](https://code.claude.com/docs/en/env-vars).
 
@@ -156,90 +163,21 @@ printf '%s\n' '{
 bash -n statusline.sh
 ```
 
+On Windows, you can set `"current_dir": "C:/Users/Public"` (forward slashes) in the mock JSON.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
 |---------|----------------|
 | Blank bar | Script not executable (`chmod +x`), or workspace trust not accepted |
-| Icons are tofu / boxes | Terminal font is not a Nerd Font |
-| Context limit looks wrong | Claude Code is reporting that limit in JSON (or defaulting to 200k); fix Claude Code env / model setup, then restart the session |
+| Icons are tofu / boxes | Terminal font is not a Nerd Font (on Windows: use Windows Terminal + Nerd Font) |
+| `command` path broken on Windows | Unescaped `\` in settings — use `~/...` or `C:/...` |
+| `jq: command not found` in Git Bash | `jq` not on that shell’s PATH |
+| Context limit looks wrong | Claude Code is reporting that limit (or defaulting to 200k); fix CC `env`, restart session |
 | `+N −M` after a clean commit | Upgrade the script — counts must come from git shortstat, not session cost fields |
 | Duration stuck at `0m` | Set `refreshInterval` (seconds) |
 | Context shows `--` | Normal before the first usage payload |
 | No git segment | Not a git work tree, or `git` failed (segment is optional) |
-
-## Windows
-
-On native Windows, run the **same** `statusline.sh` under **Git Bash** (no PowerShell port required).
-
-### Requirements
-
-1. [Git for Windows](https://git-scm.com/download/win) (provides bash)
-2. [`jq`](https://jqlang.github.io/jq/) on PATH (`winget install jqlang.jq` / scoop / choco, or any `jq.exe` that Git Bash can find)
-3. [Windows Terminal](https://aka.ms/terminal) + a [Nerd Font](https://www.nerdfonts.com/)
-4. UTF-8 terminal (Windows Terminal defaults are fine)
-
-### Install
-
-In **Git Bash**:
-
-```sh
-cp statusline.sh ~/.claude/statusline.sh
-chmod +x ~/.claude/statusline.sh
-```
-
-In `%USERPROFILE%\.claude\settings.json`:
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "~/.claude/statusline.sh",
-    "padding": 0,
-    "refreshInterval": 30
-  }
-}
-```
-
-Use `~/.claude/...` or forward slashes. Avoid unescaped `\` in the `command` string.
-
-For third-party large context windows (e.g. Grok 500k), set env and **restart the session**:
-
-```json
-{
-  "env": {
-    "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "500000",
-    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "500000"
-  }
-}
-```
-
-### Windows fixes in the script
-
-- Strip CRLF from Windows `jq` output so digit checks and model matching work
-- Normalize `C:\path` → `C:/path` for `basename` / `git -C`
-- Fail soft: one broken segment hides itself; the bar still renders
-
-### Smoke test (Git Bash)
-
-```sh
-printf '%s\n' '{
-  "model": {"id": "grok-4.5", "display_name": "Grok"},
-  "workspace": {"current_dir": "C:\\\\Users\\\\Public"},
-  "effort": {"level": "high"},
-  "cost": {"total_duration_ms": 3720000},
-  "context_window": {
-    "context_window_size": 500000,
-    "current_usage": {
-      "input_tokens": 75000,
-      "cache_creation_input_tokens": 0,
-      "cache_read_input_tokens": 0
-    }
-  }
-}' | ~/.claude/statusline.sh
-```
-
-Longer platform notes: [ROADMAP.md](./ROADMAP.md).
 
 ## License
 
