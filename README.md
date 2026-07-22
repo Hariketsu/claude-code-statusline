@@ -1,61 +1,29 @@
 # Claude Code Statusline
 
-A custom [Claude Code](https://code.claude.com/docs/en/statusline) status bar script designed for **DeepSeek API** users. Displays session context in a clean single line with Gruvbox Dark colors matching the [Starship](https://starship.rs) prompt.
+English | [中文](./README.zh-CN.md)
 
-```
-[🐋 v4·pro]  my-project · main · +261 −1 · 55% context · 42m
-```
+A custom [Claude Code](https://code.claude.com/docs/en/statusline) status bar script. Single-line, Starship-inspired layout with Gruvbox Dark colors — works well with third-party / Anthropic-compatible models (DeepSeek, Grok, CPA gateways, and others).
 
-## What It Shows
+![statusline demo](assets/statusline-demo.png)
 
-| Segment | Example | Source Field |
-|---------|---------|-------------|
-| Model | `[🐋 v4·pro]` | `.model.id` mapped to short name |
-| Directory | `my-project` | `.workspace.current_dir` basename |
-| Git branch | `dev` | `git branch --show-current` (repo only) |
-| Lines changed | `+261 −1` | `.cost.total_lines_added` / `total_lines_removed` |
-| Context usage | `55% context` | `.context_window.used_percentage` |
-| Session duration | `42m` | `.cost.total_duration_ms` |
+## Quick start
 
-Context color thresholds follow the [official Claude Code example](https://code.claude.com/docs/en/statusline#display-multiple-lines):
-
-- **< 70%** — dim (safe)
-- **70–89%** — yellow (warning)
-- **90%+** — red (danger)
-
-## What It Does NOT Show
-
-This script is built for third-party Anthropic-compatible APIs (DeepSeek). It deliberately omits:
-
-- **Token usage** (`i:`, `o:`, `cw:`, `cr:`) — adds noise without actionable value
-- **Cost estimates** (`cc_est`, `ds_est`) — client-side estimates don't match actual DeepSeek billing
-- **Rate limits** — available only to Claude.ai Pro/Max subscribers
-- **Progress bars** — keeps the line compact and scannable
-
-## Prerequisites
-
-- [Claude Code](https://code.claude.com/docs/en/overview) v2.1.132+
-- [`jq`](https://jqlang.github.io/jq/) — JSON parsing
-- `git` — branch detection (optional; gracefully degrades)
+**Requirements:** Claude Code, [`jq`](https://jqlang.github.io/jq/), optional `git`, a [Nerd Font](https://www.nerdfonts.com/) in your terminal.
 
 ```sh
 # macOS
 brew install jq
 
 # Ubuntu/Debian
-apt-get install jq
+sudo apt-get install jq
 ```
-
-## Setup
-
-**1. Install the script:**
 
 ```sh
 cp statusline.sh ~/.claude/statusline.sh
 chmod +x ~/.claude/statusline.sh
 ```
 
-**2. Add to `~/.claude/settings.json`:**
+Add to `~/.claude/settings.json`:
 
 ```json
 {
@@ -70,14 +38,79 @@ chmod +x ~/.claude/statusline.sh
 
 | Setting | Purpose |
 |---------|---------|
-| `padding` | Extra horizontal spacing. Set to `0` to minimize indentation. |
-| `refreshInterval` | Re-runs the script every N seconds. Needed because session duration changes over time. 30s is a reasonable default; adjust to taste. |
+| `padding` | Extra horizontal spacing. `0` keeps the bar tight. |
+| `refreshInterval` | Re-runs the script every **N seconds** (not ms), so duration and git stay fresh while idle. |
+
+Restart Claude Code after changing settings.
+
+## What it shows
+
+| Segment | Example | Source |
+|---------|---------|--------|
+| Model | `𝕏 4.5` / `🐋 v4 pro` | Short name from `.model.id`, else `display_name` / id |
+| Effort | `󰧑 high` | `.effort.level` when present; hidden otherwise |
+| Directory | `my-project` | Basename of `.workspace.current_dir` |
+| Git | ` master +12 −3` | Branch or detached short SHA; line counts from **real git** (below) |
+| Context | `󰡳 15%/500k` | Token usage + context limit (below) |
+| Duration | `1h2m` | `.cost.total_duration_ms` |
+
+### Git line counts
+
+```sh
+git diff --shortstat            # unstaged
+git diff --cached --shortstat   # staged
+```
+
+Both are summed. A clean tree after commit **hides** `+N −M`.
+
+These are **not** session-cumulative `cost.total_lines_added` / `total_lines_removed`.
+
+### Context
+
+- **Display:** Nerd Font gauge + `pct%/limit` (e.g. `󰡳 15%/500k`)
+- **Used (preferred):** `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`  
+  Missing cache fields count as `0`. If token fields are missing, fall back to `used_percentage`.
+- **Limit (in order):**
+  1. `.context_window.context_window_size` (from Claude Code)
+  2. `$CLAUDE_CODE_MAX_CONTEXT_TOKENS` (if Claude Code exports it)
+  3. `200000`
+- **Gauge tiers** (by used %): `<30` / `30–54` / `55–84` / `≥85`
+- **Color** (by remaining tokens): danger / warning thresholds from remaining headroom, not fixed 70%/90% used
+
+The script only **reads** what Claude Code provides (JSON and environment). It does **not** hardcode model → window size maps.
+
+#### Third-party models
+
+Claude Code often treats unrecognized model IDs as a **200k** window. If your provider actually offers more (for example **Grok 4.5** at 500k), set these in Claude Code’s `~/.claude/settings.json` under `env`, then **restart the session**:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "500000",
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "500000"
+  }
+}
+```
+
+| Variable | Role |
+|----------|------|
+| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Tells Claude Code what context size to assume (feeds `context_window_size` / statusline limit for non-Claude models). |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | Capacity used for **auto-compact** math only; does not replace the statusline limit by itself. |
+
+Requires **Claude Code ≥ 2.1.193** for these env vars to take effect (especially for non-Claude model IDs). Adjust the numbers to match your real model limit. Official reference: [Claude Code environment variables](https://code.claude.com/docs/en/env-vars).
+
+## What it does not show
+
+Built for a compact coding bar — deliberately omitted:
+
+- Token breakdown noise (`input` / `output` / cache hit % as separate chips)
+- Client-side cost estimates (often wrong for third-party billing)
+- Rate limits (Claude.ai Pro/Max style fields)
+- Progress bars and multi-line layouts
 
 ## Customization
 
-### Model display
-
-Set `USE_EMOJI_MODEL=0` for plain text labels:
+### Plain model labels
 
 ```json
 {
@@ -88,64 +121,56 @@ Set `USE_EMOJI_MODEL=0` for plain text labels:
 }
 ```
 
-Output: `[DS v4·pro]` instead of `[🐋 v4·pro]`
+| Default | `USE_EMOJI_MODEL=0` |
+|---------|---------------------|
+| `𝕏 4.5` | `Grok 4.5` |
+| `🐋 v4 pro` | `DS v4 pro` |
+| `🐋 v4 flash` | `DS v4 flash` |
 
-### Add new DeepSeek models
+### Add model short names
 
-Edit the `case` block near line 70 in the script. The matching is against `.model.id`:
-
-```bash
-case "$model_id" in
-  *v4-pro*)   model_short="🐋 v4·pro"   ;;
-  *v4-flash*) model_short="🐋 v4·flash" ;;
-  *r1*)       model_short="🐋 r1"       ;;  # add yours here
-  *)          model_short="$model_name"  ;;
-esac
-```
+Edit the `case "$model_id" in` block in `statusline.sh` (substring match on `.model.id`).
 
 ### Colors
 
-The palette is [Gruvbox Dark](https://github.com/morhetz/gruvbox), chosen to match the author's Starship prompt. Edit the `C_*` variables at the top of the script to use any ANSI true-color values.
-
-## Available Fields
-
-The script receives a JSON object from Claude Code on stdin. Key fields used:
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `model.id` | string | Raw model identifier for short-name mapping |
-| `model.display_name` | string | Fallback when `model.id` doesn't match a known pattern |
-| `workspace.current_dir` | string | Full path; script shows basename only |
-| `cost.total_lines_added` | number | Omitted when 0 |
-| `cost.total_lines_removed` | number | Displayed with Unicode minus sign `−` |
-| `cost.total_duration_ms` | number | Session wall-clock time in milliseconds |
-| `context_window.used_percentage` | number | Pre-calculated by Claude Code |
-
-Full schema: [Claude Code Statusline Docs](https://code.claude.com/docs/en/statusline#available-data)
+Gruvbox Dark via the `C_*` variables at the top of the script (truecolor ANSI).
 
 ## Testing
 
-Pipe mock JSON to verify output:
-
 ```sh
-echo '{
-  "model": {"display_name": "DeepSeek V4 Pro", "id": "deepseek-v4-pro[1m]"},
-  "workspace": {"current_dir": "/Users/me/projects/my-project"},
-  "cost": {"total_lines_added": 261, "total_lines_removed": 1, "total_duration_ms": 2520000},
-  "context_window": {"used_percentage": 55.2}
-}' | ~/.claude/statusline.sh
-```
+printf '%s\n' '{
+  "model": {"id": "grok-4.5", "display_name": "Grok"},
+  "workspace": {"current_dir": "/tmp/demo"},
+  "effort": {"level": "high"},
+  "cost": {"total_duration_ms": 3720000},
+  "context_window": {
+    "context_window_size": 500000,
+    "current_usage": {
+      "input_tokens": 75000,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    }
+  }
+}' | ./statusline.sh
 
-Expected (ANSI colors stripped): `[🐋 v4·pro]  my-project · main · +261 −1 · 55% context · 42m`
+bash -n statusline.sh
+```
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
-|---------|-------------|
-| Status line blank | Script isn't executable. Run `chmod +x ~/.claude/statusline.sh` |
-| Duration always `0m` | `refreshInterval` not set. Duration updates only on events without it. |
-| `context --` | Normal before first API response. Disappears after the first message. |
-| Leading whitespace before model tag | Claude Code built-in spacing plus `padding`. Set `"padding": 0` to minimize. |
+|---------|----------------|
+| Blank bar | Script not executable (`chmod +x`), or workspace trust not accepted |
+| Icons are tofu / boxes | Terminal font is not a Nerd Font |
+| Context limit looks wrong | Claude Code is reporting that limit in JSON (or defaulting to 200k); fix Claude Code env / model setup, then restart the session |
+| `+N −M` after a clean commit | Upgrade the script — counts must come from git shortstat, not session cost fields |
+| Duration stuck at `0m` | Set `refreshInterval` (seconds) |
+| Context shows `--` | Normal before the first usage payload |
+| No git segment | Not a git work tree, or `git` failed (segment is optional) |
+
+## Windows
+
+Details and longer-term options: [ROADMAP.md](./ROADMAP.md).
 
 ## License
 
