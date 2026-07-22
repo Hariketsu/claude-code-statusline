@@ -114,7 +114,8 @@ fi
 # --- Extract fields (single jq pass for speed) ---
 # Always strip CR from jq lines: Windows jq builds print \r\n.
 extract() {
-  printf '%s\n' "$JSON" | jq -r '
+  # Brace the pipeline so || fallback runs when jq fails (not only when tr fails).
+  { printf '%s\n' "$JSON" | jq -r '
     (.model.display_name // "?"),
     (.model.id // ""),
     (.workspace.current_dir // ""),
@@ -135,7 +136,7 @@ extract() {
       else "null"
       end
     )
-  ' 2>/dev/null | tr -d '\r' || printf '%s\n' '?' '' '' 'null' 'null' 'null' 'null' 'null' '0' 'null'
+  ' 2>/dev/null | tr -d '\r'; } || printf '%s\n' '?' '' '' 'null' 'null' 'null' 'null' 'null' '0' 'null'
 }
 
 {
