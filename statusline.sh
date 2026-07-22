@@ -51,6 +51,17 @@ fmt_k() {
   printf '%sk' "$(( (n + 500) / 1000 ))"
 }
 
+# Parse git --shortstat text → "INS DEL" (missing side counts as 0)
+parse_shortstat() {
+  local stat="${1:-}"
+  local ins=0 del=0 n
+  n=$(printf '%s' "$stat" | sed -n 's/.* \([0-9][0-9]*\) insertion.*/\1/p' 2>/dev/null || true)
+  is_uint "$n" && ins="$n"
+  n=$(printf '%s' "$stat" | sed -n 's/.* \([0-9][0-9]*\) deletion.*/\1/p' 2>/dev/null || true)
+  is_uint "$n" && del="$n"
+  printf '%s %s' "$ins" "$del"
+}
+
 # --- Read JSON from stdin ---
 JSON=$(cat 2>/dev/null || true)
 if [ -z "$JSON" ]; then
@@ -64,8 +75,6 @@ extract() {
     (.model.display_name // "?"),
     (.model.id // ""),
     (.workspace.current_dir // ""),
-    ((.cost.total_lines_added // 0) | tostring),
-    ((.cost.total_lines_removed // 0) | tostring),
     ((.context_window.context_window_size // "null") | tostring),
     ((.context_window.current_usage.input_tokens // "null") | tostring),
     ((.context_window.current_usage.cache_creation_input_tokens // "null") | tostring),
@@ -83,15 +92,13 @@ extract() {
       else "null"
       end
     )
-  ' 2>/dev/null || printf '%s\n' '?' '' '' '0' '0' 'null' 'null' 'null' 'null' 'null' '0' 'null'
+  ' 2>/dev/null || printf '%s\n' '?' '' '' 'null' 'null' 'null' 'null' 'null' '0' 'null'
 }
 
 {
   read -r model_name
   read -r model_id
   read -r current_dir
-  read -r lines_added
-  read -r lines_removed
   read -r ctx_size
   read -r input_tokens
   read -r cache_create
@@ -175,9 +182,13 @@ dir_base=$(basename "${current_dir:-}" 2>/dev/null || true)
 [ -z "$dir_base" ] && dir_base="?"
 seg_dir="$(aqua "$dir_base")"
 
-# 3. Git branch / detached short commit
-# Always pin to workspace dir; failures only hide this segment.
+# 3–4. Git branch + real working-tree diff lines
+# Branch/detached: git -C only; failures hide just this segment.
+# Lines: unstaged + staged shortstat (not Claude cost.total_lines_*).
+#   git diff --shortstat
+#   git diff --cached --shortstat
 seg_git=""
+seg_lines=""
 if [ -n "${current_dir:-}" ]; then
   if git -C "$current_dir" rev-parse --git-dir >/dev/null 2>&1; then
     branch=$(git -C "$current_dir" branch --show-current 2>/dev/null || true)
@@ -189,17 +200,33 @@ if [ -n "${current_dir:-}" ]; then
         seg_git="$(purple "${GIT_ICON} $short_sha")"
       fi
     fi
-  fi
-fi
 
-# 4. Lines added / removed (omit if both are 0 / non-numeric)
-seg_lines=""
-if is_uint "${lines_added:-}" && [ "$lines_added" -gt 0 ]; then
-  seg_lines+=$(green "+${lines_added}")
-fi
-if is_uint "${lines_removed:-}" && [ "$lines_removed" -gt 0 ]; then
-  [ -n "$seg_lines" ] && seg_lines+=" "
-  seg_lines+=$(red "${MINUS}${lines_removed}")
+    lines_added=0
+    lines_removed=0
+    unstaged_stat=$(GIT_OPTIONAL_LOCKS=1 git -C "$current_dir" diff --shortstat 2>/dev/null || true)
+    staged_stat=$(GIT_OPTIONAL_LOCKS=1 git -C "$current_dir" diff --cached --shortstat 2>/dev/null || true)
+
+    read -r u_add u_del <<EOF
+$(parse_shortstat "$unstaged_stat")
+EOF
+    read -r s_add s_del <<EOF
+$(parse_shortstat "$staged_stat")
+EOF
+    is_uint "${u_add:-}" || u_add=0
+    is_uint "${u_del:-}" || u_del=0
+    is_uint "${s_add:-}" || s_add=0
+    is_uint "${s_del:-}" || s_del=0
+    lines_added=$(( u_add + s_add ))
+    lines_removed=$(( u_del + s_del ))
+
+    if [ "$lines_added" -gt 0 ]; then
+      seg_lines+=$(green "+${lines_added}")
+    fi
+    if [ "$lines_removed" -gt 0 ]; then
+      [ -n "$seg_lines" ] && seg_lines+=" "
+      seg_lines+=$(red "${MINUS}${lines_removed}")
+    fi
+  fi
 fi
 
 # Merge git + lines into one segment (space, no ·)
@@ -208,8 +235,6 @@ if [ -n "$seg_git" ] && [ -n "$seg_lines" ]; then
   seg_git_lines="$seg_git $seg_lines"
 elif [ -n "$seg_git" ]; then
   seg_git_lines="$seg_git"
-elif [ -n "$seg_lines" ]; then
-  seg_git_lines="$seg_lines"
 fi
 
 # 5. Context usage
