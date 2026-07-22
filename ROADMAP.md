@@ -48,7 +48,7 @@ This document records **direction**, not a binding schedule. Items move when the
 
 **Goal:** usable on Windows without abandoning the bash-first design.
 
-### Recommended path (default)
+### Recommended path (default) — implemented & documented
 
 | Layer | Choice |
 |-------|--------|
@@ -66,7 +66,13 @@ Why this path:
 - Zero dual-maintenance of business logic.
 - Same behavior as macOS/Linux for git shortstat, context math, and colors.
 
-Documented user checklist (when we flesh out README Windows section):
+Windows hardening already in `statusline.sh`:
+
+- [x] Strip `\r` from Windows `jq` / git output (CRLF breaks `is_uint` and model `case` matches)
+- [x] Normalize `C:\path` → `C:/path` for basename + `git -C` under Git Bash
+- [x] README Windows install checklist (EN + 中文)
+
+User checklist:
 
 1. Install Git for Windows  
 2. Install `jq` (e.g. `winget` / `scoop` / `choco`) so Git Bash finds it  

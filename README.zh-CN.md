@@ -168,9 +168,78 @@ bash -n statusline.sh
 | 上下文显示 `--` | 首次 API 占用字段出现前属正常 |
 | 无 Git 段 | 不在仓库内，或 git 失败（该段可缺失） |
 
-## Windows支持
+## Windows 支持
 
-细节与后续路线见 [ROADMAP.md](./ROADMAP.md)。
+原生 Windows 上推荐用 **Git Bash** 跑同一份 `statusline.sh`（不必改成 PowerShell）。
+
+### 依赖
+
+1. [Git for Windows](https://git-scm.com/download/win)（自带 bash）
+2. [`jq`](https://jqlang.github.io/jq/) 在 PATH 中（`winget install jqlang.jq` / scoop / choco，或确保 Anaconda 等路径里的 `jq.exe` 可被 Git Bash 找到）
+3. [Windows Terminal](https://aka.ms/terminal) + [Nerd Font](https://www.nerdfonts.com/)（图标与 emoji 才不会变方框）
+4. 终端尽量用 UTF-8（Windows Terminal 默认即可）
+
+### 安装
+
+在 **Git Bash** 中：
+
+```sh
+cp statusline.sh ~/.claude/statusline.sh
+chmod +x ~/.claude/statusline.sh
+```
+
+编辑 `%USERPROFILE%\.claude\settings.json`：
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh",
+    "padding": 0,
+    "refreshInterval": 30
+  }
+}
+```
+
+路径请用 `~/.claude/...` 或正斜杠（如 `C:/Users/你/AppData/...`），**不要**写未转义的 `\`。
+
+第三方大上下文模型（如 Grok 500k）请把上限放在 `env` 里，然后**重启 Claude Code 会话**：
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "500000",
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "500000"
+  }
+}
+```
+
+### Windows 下脚本已处理的兼容点
+
+- Windows 版 `jq` 输出常带 `\r`，脚本会剥离 CRLF，避免数字校验与模型匹配失败
+- Claude Code 可能传入 `C:\path\to\dir`，脚本会规范成 `C:/path/to/dir` 再给 `basename` / `git -C`
+- 仍保持 fail-soft：某一段失败只隐藏该段，不会整条状态栏空白
+
+### 本机自测（Git Bash）
+
+```sh
+printf '%s\n' '{
+  "model": {"id": "grok-4.5", "display_name": "Grok"},
+  "workspace": {"current_dir": "C:\\\\Users\\\\Public"},
+  "effort": {"level": "high"},
+  "cost": {"total_duration_ms": 3720000},
+  "context_window": {
+    "context_window_size": 500000,
+    "current_usage": {
+      "input_tokens": 75000,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    }
+  }
+}' | ~/.claude/statusline.sh
+```
+
+更长的平台路线（PowerShell 移植等）见 [ROADMAP.md](./ROADMAP.md)。
 
 ## License
 

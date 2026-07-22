@@ -170,7 +170,76 @@ bash -n statusline.sh
 
 ## Windows
 
-Details and longer-term options: [ROADMAP.md](./ROADMAP.md).
+On native Windows, run the **same** `statusline.sh` under **Git Bash** (no PowerShell port required).
+
+### Requirements
+
+1. [Git for Windows](https://git-scm.com/download/win) (provides bash)
+2. [`jq`](https://jqlang.github.io/jq/) on PATH (`winget install jqlang.jq` / scoop / choco, or any `jq.exe` that Git Bash can find)
+3. [Windows Terminal](https://aka.ms/terminal) + a [Nerd Font](https://www.nerdfonts.com/)
+4. UTF-8 terminal (Windows Terminal defaults are fine)
+
+### Install
+
+In **Git Bash**:
+
+```sh
+cp statusline.sh ~/.claude/statusline.sh
+chmod +x ~/.claude/statusline.sh
+```
+
+In `%USERPROFILE%\.claude\settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "~/.claude/statusline.sh",
+    "padding": 0,
+    "refreshInterval": 30
+  }
+}
+```
+
+Use `~/.claude/...` or forward slashes. Avoid unescaped `\` in the `command` string.
+
+For third-party large context windows (e.g. Grok 500k), set env and **restart the session**:
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "500000",
+    "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "500000"
+  }
+}
+```
+
+### Windows fixes in the script
+
+- Strip CRLF from Windows `jq` output so digit checks and model matching work
+- Normalize `C:\path` → `C:/path` for `basename` / `git -C`
+- Fail soft: one broken segment hides itself; the bar still renders
+
+### Smoke test (Git Bash)
+
+```sh
+printf '%s\n' '{
+  "model": {"id": "grok-4.5", "display_name": "Grok"},
+  "workspace": {"current_dir": "C:\\\\Users\\\\Public"},
+  "effort": {"level": "high"},
+  "cost": {"total_duration_ms": 3720000},
+  "context_window": {
+    "context_window_size": 500000,
+    "current_usage": {
+      "input_tokens": 75000,
+      "cache_creation_input_tokens": 0,
+      "cache_read_input_tokens": 0
+    }
+  }
+}' | ~/.claude/statusline.sh
+```
+
+Longer platform notes: [ROADMAP.md](./ROADMAP.md).
 
 ## License
 
