@@ -2,6 +2,7 @@
 # Claude Code Statusline — Starship-inspired single-line status bar
 # Reads status JSON from stdin, outputs a colored single line to stdout.
 # Dependencies: bash, jq, git (optional)
+# Works on macOS / Linux / Windows (Git Bash / MSYS2).
 
 set -uo pipefail
 
@@ -33,6 +34,11 @@ purple(){ printf '%s' "${C_PURPLE}$1${C_RST}"; }
 green() { printf '%s' "${C_GREEN}$1${C_RST}"; }
 red()   { printf '%s' "${C_RED}$1${C_RST}"; }
 
+# Strip CR so Windows jq/git (CRLF) does not break digit checks / case matches.
+strip_cr() {
+  printf '%s' "${1//$'\r'/}"
+}
+
 # Non-negative integer? (digits only; empty/null → false)
 is_uint() {
   case "${1:-}" in
@@ -53,25 +59,63 @@ fmt_k() {
 
 # Parse git --shortstat text → "INS DEL" (missing side counts as 0)
 parse_shortstat() {
-  local stat="${1:-}"
+  local stat
+  stat=$(strip_cr "${1:-}")
   local ins=0 del=0 n
   n=$(printf '%s' "$stat" | sed -n 's/.* \([0-9][0-9]*\) insertion.*/\1/p' 2>/dev/null || true)
+  n=$(strip_cr "$n")
   is_uint "$n" && ins="$n"
   n=$(printf '%s' "$stat" | sed -n 's/.* \([0-9][0-9]*\) deletion.*/\1/p' 2>/dev/null || true)
+  n=$(strip_cr "$n")
   is_uint "$n" && del="$n"
   printf '%s %s' "$ins" "$del"
 }
 
+# Normalize path for basename / git -C:
+# - Windows jq often emits CRLF (stripped elsewhere)
+# - Claude Code may pass C:\foo\bar — convert \ → / for Git Bash
+# Keep drive letter form (C:/...) which Git for Windows accepts.
+# Note: MSYS/Git Bash makes ${var//\\//} and sed 's/\\/\//g' unreliable;
+# tr with octal 134 (backslash) is portable here.
+normalize_path() {
+  local p
+  p=$(strip_cr "${1:-}")
+  p=$(printf '%s' "$p" | tr '\134' '/')
+  # Drop trailing slashes (except bare "C:/")
+  case "$p" in
+    [A-Za-z]:/) ;;
+    */) p="${p%/}" ;;
+  esac
+  printf '%s' "$p"
+}
+
+# Basename that works with Windows-style paths after normalize_path.
+path_basename() {
+  local p
+  p=$(normalize_path "${1:-}")
+  if [ -z "$p" ]; then
+    printf '%s' ''
+    return
+  fi
+  case "$p" in
+    */*) printf '%s' "${p##*/}" ;;
+    *)   printf '%s' "$p" ;;
+  esac
+}
+
 # --- Read JSON from stdin ---
 JSON=$(cat 2>/dev/null || true)
+JSON=$(strip_cr "$JSON")
 if [ -z "$JSON" ]; then
   printf '%s\n' "$(dim 'no data')"
   exit 0
 fi
 
 # --- Extract fields (single jq pass for speed) ---
+# Always strip CR from jq lines: Windows jq builds print \r\n.
 extract() {
-  printf '%s\n' "$JSON" | jq -r '
+  # Brace the pipeline so || fallback runs when jq fails (not only when tr fails).
+  { printf '%s\n' "$JSON" | jq -r '
     (.model.display_name // "?"),
     (.model.id // ""),
     (.workspace.current_dir // ""),
@@ -92,7 +136,7 @@ extract() {
       else "null"
       end
     )
-  ' 2>/dev/null || printf '%s\n' '?' '' '' 'null' 'null' 'null' 'null' 'null' '0' 'null'
+  ' 2>/dev/null | tr -d '\r'; } || printf '%s\n' '?' '' '' 'null' 'null' 'null' 'null' 'null' '0' 'null'
 }
 
 {
@@ -107,6 +151,18 @@ extract() {
   read -r total_duration_ms
   read -r effort_level
 } < <(extract)
+
+# Defensive strip (covers non-jq fallback path)
+model_name=$(strip_cr "${model_name:-}")
+model_id=$(strip_cr "${model_id:-}")
+current_dir=$(normalize_path "${current_dir:-}")
+ctx_size=$(strip_cr "${ctx_size:-}")
+input_tokens=$(strip_cr "${input_tokens:-}")
+cache_create=$(strip_cr "${cache_create:-}")
+cache_read=$(strip_cr "${cache_read:-}")
+ctx_pct_raw=$(strip_cr "${ctx_pct_raw:-}")
+total_duration_ms=$(strip_cr "${total_duration_ms:-}")
+effort_level=$(strip_cr "${effort_level:-}")
 
 # ============================================================================
 # Model short name (no brackets; no middle-dot separators)
@@ -177,8 +233,8 @@ case "${effort_level:-}" in
   max)     seg_effort=$(dim "${EFFORT_ICON} max") ;;
 esac
 
-# 2. Directory basename
-dir_base=$(basename "${current_dir:-}" 2>/dev/null || true)
+# 2. Directory basename (Windows-safe)
+dir_base=$(path_basename "${current_dir:-}")
 [ -z "$dir_base" ] && dir_base="?"
 seg_dir="$(aqua "$dir_base")"
 
@@ -187,15 +243,18 @@ seg_dir="$(aqua "$dir_base")"
 # Lines: unstaged + staged shortstat (not Claude cost.total_lines_*).
 #   git diff --shortstat
 #   git diff --cached --shortstat
+# current_dir already normalized for Git Bash (C:/path or /c/path).
 seg_git=""
 seg_lines=""
 if [ -n "${current_dir:-}" ]; then
   if git -C "$current_dir" rev-parse --git-dir >/dev/null 2>&1; then
     branch=$(git -C "$current_dir" branch --show-current 2>/dev/null || true)
+    branch=$(strip_cr "$branch")
     if [ -n "$branch" ]; then
       seg_git="$(purple "${GIT_ICON} $branch")"
     else
       short_sha=$(git -C "$current_dir" rev-parse --short HEAD 2>/dev/null || true)
+      short_sha=$(strip_cr "$short_sha")
       if [ -n "$short_sha" ]; then
         seg_git="$(purple "${GIT_ICON} $short_sha")"
       fi
@@ -212,6 +271,10 @@ EOF
     read -r s_add s_del <<EOF
 $(parse_shortstat "$staged_stat")
 EOF
+    u_add=$(strip_cr "${u_add:-}")
+    u_del=$(strip_cr "${u_del:-}")
+    s_add=$(strip_cr "${s_add:-}")
+    s_del=$(strip_cr "${s_del:-}")
     is_uint "${u_add:-}" || u_add=0
     is_uint "${u_del:-}" || u_del=0
     is_uint "${s_add:-}" || s_add=0
