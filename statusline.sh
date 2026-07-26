@@ -164,6 +164,15 @@ ctx_pct_raw=$(strip_cr "${ctx_pct_raw:-}")
 total_duration_ms=$(strip_cr "${total_duration_ms:-}")
 effort_level=$(strip_cr "${effort_level:-}")
 
+# Claude Code may report an alias name while a gateway maps it to another model.
+case "$model_id" in
+  *fable*)  model_name="${ANTHROPIC_DEFAULT_FABLE_MODEL_NAME:-$model_name}" ;;
+  *opus*)   model_name="${ANTHROPIC_DEFAULT_OPUS_MODEL_NAME:-$model_name}" ;;
+  *sonnet*) model_name="${ANTHROPIC_DEFAULT_SONNET_MODEL_NAME:-$model_name}" ;;
+  *haiku*)  model_name="${ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME:-$model_name}" ;;
+esac
+model_name=$(strip_cr "$model_name")
+
 # ============================================================================
 # Model short name (no brackets; no middle-dot separators)
 # ============================================================================

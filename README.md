@@ -54,7 +54,7 @@ Restart Claude Code after changing settings.
 
 | Segment | Example | Source |
 |---------|---------|--------|
-| Model | `𝕏 4.5` / `🐋 v4 pro` | Short name from `.model.id`, else `display_name` / id |
+| Model | `𝕏 4.5` / `🐋 v4 pro` | Mapped role name from `ANTHROPIC_DEFAULT_*_MODEL_NAME`, else short name / `display_name` / id |
 | Effort | `󰧑 high` | `.effort.level` when present; hidden otherwise |
 | Directory | `my-project` | Basename of `.workspace.current_dir` |
 | Git | ` master +12 −3` | Branch or detached short SHA; line counts from **real git** (below) |

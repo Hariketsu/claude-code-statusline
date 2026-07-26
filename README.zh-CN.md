@@ -54,7 +54,7 @@ chmod +x ~/.claude/statusline.sh
 
 | 段 | 示例 | 数据来源 |
 |----|------|----------|
-| 模型 | `𝕏 4.5` / `🐋 v4 pro` | 由 `.model.id` 映射短名，否则 `display_name` / id |
+| 模型 | `𝕏 4.5` / `🐋 v4 pro` | 优先读取 `ANTHROPIC_DEFAULT_*_MODEL_NAME` 的角色映射名，否则由 `.model.id` 映射短名或读取 `display_name` / id |
 | 思考强度 | `󰧑 high` | `.effort.level`（有则显示，无则隐藏） |
 | 目录 | `my-project` | `.workspace.current_dir` 的 basename |
 | Git | ` master +12 −3` | 分支或 detached 短 SHA；行数为**真实 git**（见下） |
