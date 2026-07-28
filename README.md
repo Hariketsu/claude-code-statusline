@@ -2,33 +2,39 @@
 
 English | [中文](./README.zh-CN.md)
 
-A custom [Claude Code](https://code.claude.com/docs/en/statusline) status bar script. Single-line, Starship-inspired layout with Gruvbox Dark colors — works well with third-party / Anthropic-compatible models (DeepSeek, Grok, CPA gateways, and others).
+A personal Claude Code status bar script with Gruvbox Dark colors. Works with third-party models (DeepSeek, Grok, etc.) and Anthropic-compatible gateways.
 
 ![statusline demo](assets/statusline-demo.png)
 
 ## Quick start
 
-**Requirements:** Claude Code, [`jq`](https://jqlang.github.io/jq/), optional `git`, a [Nerd Font](https://www.nerdfonts.com/) in your terminal.
+**Requirements:** Claude Code, [`jq`](https://jqlang.github.io/jq/), and a [Nerd Font](https://www.nerdfonts.com/) in your terminal. `git` is optional — enables branch name and line-change counts.
 
-On **Windows**, use [Git Bash](https://git-scm.com/download/win) for the commands below, put `jq` on PATH, and prefer [Windows Terminal](https://aka.ms/terminal) with a Nerd Font. Same script — no PowerShell port required. Longer platform notes: [ROADMAP.md](./ROADMAP.md).
+**Windows users** should use [Git Bash](https://git-scm.com/download/win), make sure `jq` is on PATH, and pair it with [Windows Terminal](https://aka.ms/terminal) + a Nerd Font. No PowerShell port needed — same script works. More platform notes: [ROADMAP.md](./ROADMAP.md).
+
+### 1. Install jq
 
 ```sh
 # macOS
 brew install jq
 
-# Ubuntu/Debian
+# Ubuntu / Debian
 sudo apt-get install jq
 
-# Windows (example)
+# Windows
 # winget install jqlang.jq
 ```
+
+### 2. Install the script
 
 ```sh
 cp statusline.sh ~/.claude/statusline.sh
 chmod +x ~/.claude/statusline.sh
 ```
 
-Add to `~/.claude/settings.json` (on Windows: `%USERPROFILE%\.claude\settings.json`):
+### 3. Configure Claude Code
+
+`~/.claude/settings.json` (Windows: `%USERPROFILE%\.claude\settings.json`):
 
 ```json
 {
@@ -41,12 +47,12 @@ Add to `~/.claude/settings.json` (on Windows: `%USERPROFILE%\.claude\settings.js
 }
 ```
 
-Use `~/...` or forward slashes in `command` (e.g. `C:/Users/you/.claude/statusline.sh`). Avoid unescaped `\`.
+Use `~/...` or forward slashes in `command` (e.g. `C:/Users/you/.claude/statusline.sh`). Avoid unescaped backslashes `\`.
 
-| Setting | Purpose |
-|---------|---------|
-| `padding` | Extra horizontal spacing. `0` keeps the bar tight. |
-| `refreshInterval` | Re-runs every **N seconds** (not ms), so duration and git stay fresh while idle. |
+| Setting | Description |
+|---------|-------------|
+| `padding` | Horizontal padding. `0` for compact mode |
+| `refreshInterval` | Refresh interval in **seconds**. Duration and git stats only update at this cadence while idle |
 
 Restart Claude Code after changing settings.
 
@@ -54,41 +60,49 @@ Restart Claude Code after changing settings.
 
 | Segment | Example | Source |
 |---------|---------|--------|
-| Model | `𝕏 4.5` / `🐋 v4 pro` | Mapped role name from `ANTHROPIC_DEFAULT_*_MODEL_NAME`, else short name / `display_name` / id |
+| Model | `𝕏 4.5` / `🐋 v4 pro` | Gateway-mapped name → `.model.id` short name → `display_name`, detected automatically |
 | Effort | `󰧑 high` | `.effort.level` when present; hidden otherwise |
 | Directory | `my-project` | Basename of `.workspace.current_dir` |
-| Git | ` master +12 −3` | Branch or detached short SHA; line counts from **real git** (below) |
-| Context | `󰡳 15%/500k` | Token usage + context limit (below) |
+| Git | ` master +12 −3` | Branch or detached short SHA; line counts from real git |
+| Context | `󰡳 15%/500k` | Token usage and limit |
 | Duration | `1h2m` | `.cost.total_duration_ms` |
 
+Token breakdowns, cost estimates, and progress bars are intentionally omitted to keep the bar compact.
+
 ### Git line counts
+
+Unstaged and staged changes, counted separately:
 
 ```sh
 git diff --shortstat            # unstaged
 git diff --cached --shortstat   # staged
 ```
 
-Both are summed. A clean tree after commit **hides** `+N −M`.
-
-These are **not** session-cumulative `cost.total_lines_added` / `total_lines_removed`.
+Both are summed. A clean working tree after commit hides `+N −M`. These are **real git numbers** — not the session-cumulative fields `cost.total_lines_added` / `total_lines_removed`.
 
 ### Context
 
-- **Display:** Nerd Font gauge + `pct%/limit` (e.g. `󰡳 15%/500k`)
-- **Used (preferred):** `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`  
-  Missing cache fields count as `0`. If token fields are missing, fall back to `used_percentage`.
-- **Limit (in order):**
-  1. `.context_window.context_window_size` (from Claude Code)
-  2. `$CLAUDE_CODE_MAX_CONTEXT_TOKENS` (if Claude Code exports it)
-  3. `200000`
-- **Gauge tiers** (by used %): `<30` / `30–54` / `55–84` / `≥85`
-- **Color** (by remaining tokens): danger / warning from remaining headroom, not fixed 70%/90% used
+Display format: Nerd Font icon + `usage/limit`, e.g. `󰡳 15%/500k`.
 
-The script only **reads** what Claude Code provides (JSON and environment). It does **not** hardcode model → window size maps.
+**Token usage** (in priority order):
+1. `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`
+2. Missing cache fields count as `0`
+3. Falls back to `used_percentage` when none of the above are available
 
-#### Third-party models
+**Limit** (in priority order):
+1. `.context_window.context_window_size` (from Claude Code)
+2. `$CLAUDE_CODE_MAX_CONTEXT_TOKENS`
+3. Default `200000`
 
-Claude Code often treats unrecognized model IDs as a **200k** window. If your provider actually offers more (for example **Grok 4.5** at 500k), set these in Claude Code’s `~/.claude/settings.json` under `env`, then **restart the session**:
+**Gauge tiers** (by usage %): `<30%` / `30–54%` / `55–84%` / `≥85%`
+
+**Colors** are based on remaining tokens rather than fixed 70% / 90% usage thresholds.
+
+The script only reads what Claude Code provides (JSON and environment). It never hardcodes model → window-size maps.
+
+### Third-party models
+
+Claude Code often treats unrecognized model IDs as a **200k** window. If your model supports more (e.g. Grok 4.5 at 500k), configure this in `~/.claude/settings.json` under `env`:
 
 ```json
 {
@@ -101,31 +115,17 @@ Claude Code often treats unrecognized model IDs as a **200k** window. If your pr
 
 | Variable | Role |
 |----------|------|
-| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Context size Claude Code assumes (feeds `context_window_size` / statusline limit for non-Claude models). |
-| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | **Auto-compact** math only; does not replace the statusline limit by itself. |
+| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | Tells Claude Code the context limit; affects the statusline denominator |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | Auto-compact math only; does not directly change the statusline |
 
-Requires **Claude Code ≥ 2.1.193** for these env vars to take effect (especially for non-Claude model IDs). Adjust the numbers to match your real model limit. Official reference: [Claude Code environment variables](https://code.claude.com/docs/en/env-vars).
-
-## What it does not show
-
-Built for a compact coding bar — deliberately omitted:
-
-- Token breakdown noise (`input` / `output` / cache hit % as separate chips)
-- Client-side cost estimates (often wrong for third-party billing)
-- Rate limits (Claude.ai Pro/Max style fields)
-- Progress bars and multi-line layouts
+Requires **Claude Code ≥ 2.1.193**. Restart the session after configuring. Reference: [Claude Code environment variables](https://code.claude.com/docs/en/env-vars).
 
 ## Customization
 
-### Plain model labels
+### Disable emoji icons
 
 ```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "USE_EMOJI_MODEL=0 ~/.claude/statusline.sh"
-  }
-}
+"command": "USE_EMOJI_MODEL=0 ~/.claude/statusline.sh"
 ```
 
 | Default | `USE_EMOJI_MODEL=0` |
@@ -134,15 +134,17 @@ Built for a compact coding bar — deliberately omitted:
 | `🐋 v4 pro` | `DS v4 pro` |
 | `🐋 v4 flash` | `DS v4 flash` |
 
-### Add model short names
+### Add a model
 
-Edit the `case "$model_id" in` block in `statusline.sh` (substring match on `.model.id`).
+Edit the `case "$model_id|$model_name" in` block in `statusline.sh` — it does substring matching.
 
 ### Colors
 
-Gruvbox Dark via the `C_*` variables at the top of the script (truecolor ANSI).
+The `C_*` variables at the top of the script. Gruvbox Dark palette, truecolor ANSI.
 
 ## Testing
+
+Verify with mock JSON:
 
 ```sh
 printf '%s\n' '{
@@ -160,24 +162,25 @@ printf '%s\n' '{
   }
 }' | ./statusline.sh
 
+# Syntax check
 bash -n statusline.sh
 ```
 
-On Windows, you can set `"current_dir": "C:/Users/Public"` (forward slashes) in the mock JSON.
+On Windows, write mock paths as `"current_dir": "C:/Users/Public"` (forward slashes).
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
-|---------|----------------|
-| Blank bar | Script not executable (`chmod +x`), or workspace trust not accepted |
-| Icons are tofu / boxes | Terminal font is not a Nerd Font (on Windows: use Windows Terminal + Nerd Font) |
-| `command` path broken on Windows | Unescaped `\` in settings — use `~/...` or `C:/...` |
-| `jq: command not found` in Git Bash | `jq` not on that shell’s PATH |
-| Context limit looks wrong | Claude Code is reporting that limit (or defaulting to 200k); fix CC `env`, restart session |
-| `+N −M` after a clean commit | Upgrade the script — counts must come from git shortstat, not session cost fields |
-| Duration stuck at `0m` | Set `refreshInterval` (seconds) |
-| Context shows `--` | Normal before the first usage payload |
-| No git segment | Not a git work tree, or `git` failed (segment is optional) |
+|---------|--------------|
+| Blank bar | Run `chmod +x`, or accept workspace trust |
+| Icons show as tofu / boxes | Terminal font is not a Nerd Font |
+| Path broken on Windows | Unescaped backslashes — use `~/...` or `C:/...` |
+| `jq: command not found` | `jq` is not on Git Bash's PATH |
+| Wrong context limit | Env not set on Claude Code side, or restart needed |
+| `+N −M` after a clean commit | Upgrade the script — counts must come from git shortstat |
+| Duration stuck at `0m` | `refreshInterval` is not configured |
+| Context shows `--` | Normal before the first usage payload arrives |
+| No git segment | Not in a git repo, or git command failed |
 
 ## License
 

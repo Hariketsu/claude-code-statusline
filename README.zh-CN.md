@@ -2,33 +2,39 @@
 
 [English](./README.md) | 中文
 
-一个自定义的 [Claude Code](https://code.claude.com/docs/en/statusline) 状态栏脚本。单行布局，风格参考 Starship，配色为 Gruvbox Dark。面向第三方 / Anthropic 兼容模型友好（DeepSeek、Grok、CPA 网关等）。
+ 个人自用 Claude Code 状态栏脚本，Gruvbox Dark 配色。支持 DeepSeek、Grok 等第三方模型及 Anthropic 兼容网关。
 
 ![statusline 演示](assets/statusline-demo.png)
 
 ## 快速开始
 
-**依赖：** Claude Code、[`jq`](https://jqlang.github.io/jq/)、可选 `git`、终端使用 [Nerd Font](https://www.nerdfonts.com/)。
+**前置要求：** Claude Code、[`jq`](https://jqlang.github.io/jq/)，终端需使用 [Nerd Font](https://www.nerdfonts.com/)。`git` 可选——有则显示分支和改动行数。
 
-**Windows** 请用 [Git Bash](https://git-scm.com/download/win) 执行下面的命令，保证 `jq` 在 PATH 中，并建议使用 [Windows Terminal](https://aka.ms/terminal) + Nerd Font。同一份脚本即可，无需 PowerShell 移植。更长的平台说明见 [ROADMAP.md](./ROADMAP.md)。
+**Windows 用户**请用 [Git Bash](https://git-scm.com/download/win)，确保 `jq` 在 PATH 中，建议搭配 [Windows Terminal](https://aka.ms/terminal) + Nerd Font。无需 PowerShell 移植，同一份脚本即可。更多平台说明见 [ROADMAP.md](./ROADMAP.md)。
+
+### 1. 安装 jq
 
 ```sh
 # macOS
 brew install jq
 
-# Ubuntu/Debian
+# Ubuntu / Debian
 sudo apt-get install jq
 
-# Windows（示例）
+# Windows
 # winget install jqlang.jq
 ```
+
+### 2. 安装脚本
 
 ```sh
 cp statusline.sh ~/.claude/statusline.sh
 chmod +x ~/.claude/statusline.sh
 ```
 
-在 `~/.claude/settings.json` 中加入（Windows：`%USERPROFILE%\.claude\settings.json`）：
+### 3. 配置 Claude Code
+
+`~/.claude/settings.json`（Windows：`%USERPROFILE%\.claude\settings.json`）：
 
 ```json
 {
@@ -41,54 +47,62 @@ chmod +x ~/.claude/statusline.sh
 }
 ```
 
-`command` 请用 `~/...` 或正斜杠（如 `C:/Users/你/.claude/statusline.sh`），避免未转义的 `\`。
+`command` 路径请用 `~/...` 或正斜杠（如 `C:/Users/你/.claude/statusline.sh`），避免未转义的反斜杠 `\`。
 
-| 配置项 | 作用 |
+| 配置项 | 说明 |
 |--------|------|
-| `padding` | 额外左右留白；`0` 更紧凑 |
-| `refreshInterval` | 每隔 **N 秒**（不是毫秒）重跑脚本，空闲时时长和 git 才会更新 |
+| `padding` | 左右留白，`0` 为紧凑模式 |
+| `refreshInterval` | 刷新间隔，单位**秒**。空闲状态下时长和 git 依赖此值更新 |
 
-改完设置后请重启 Claude Code / 新开会话。
+改完重启 Claude Code 生效。
 
 ## 显示内容
 
-| 段 | 示例 | 数据来源 |
-|----|------|----------|
-| 模型 | `𝕏 4.5` / `🐋 v4 pro` | 优先读取 `ANTHROPIC_DEFAULT_*_MODEL_NAME` 的角色映射名，否则由 `.model.id` 映射短名或读取 `display_name` / id |
-| 思考强度 | `󰧑 high` | `.effort.level`（有则显示，无则隐藏） |
+| 段 | 示例 | 说明 |
+|----|------|------|
+| 模型 | `𝕏 4.5` / `🐋 v4 pro` | 网关映射的模型名 → `.model.id` 短名 → `display_name`，自动识别 |
+| 思考强度 | `󰧑 high` | `.effort.level`，无则隐藏 |
 | 目录 | `my-project` | `.workspace.current_dir` 的 basename |
-| Git | ` master +12 −3` | 分支或 detached 短 SHA；行数为**真实 git**（见下） |
-| 上下文 | `󰡳 15%/500k` | token 占用 + 上限（见下） |
+| Git | ` master +12 −3` | 分支名或 detached SHA；改动行数来自真实 git |
+| 上下文 | `󰡳 15%/500k` | token 占用与上限 |
 | 时长 | `1h2m` | `.cost.total_duration_ms` |
 
-### Git 增删行数
+为保持紧凑，不显示 token 明细、费用估算、进度条等信息。
+
+### Git 改动行数
+
+分别统计未暂存和已暂存：
 
 ```sh
 git diff --shortstat            # 未暂存
 git diff --cached --shortstat   # 已暂存
 ```
 
-两者相加。提交后工作区干净则**不显示** `+N −M`。
-
-这里**不是**会话累计字段 `cost.total_lines_added` / `total_lines_removed`。
+两者累加。提交后工作区干净则自动隐藏 `+N −M`。注意这里用的是**真实 git 数据**，不是会话累计字段 `cost.total_lines_added` / `total_lines_removed`。
 
 ### 上下文
 
-- **显示：** Nerd Font 图标 + `百分比/上限`（如 `󰡳 15%/500k`）
-- **占用（优先）：** `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`  
-  cache 字段缺失按 `0`；token 明细都没有时再回退 `used_percentage`
-- **上限优先级：**
-  1. `.context_window.context_window_size`（Claude Code 下发）
-  2. `$CLAUDE_CODE_MAX_CONTEXT_TOKENS`（若进程环境里有）
-  3. `200000`
-- **图标档位**（占用 %）：`<30` / `30–54` / `55–84` / `≥85`
-- **颜色**（按剩余 token）：danger / warning 看剩余量，而不是固定 70%/90% 占用
+显示格式：Nerd Font 图标 + `占用比例/上限`，如 `󰡳 15%/500k`。
 
-脚本只**读取** Claude Code 给的 JSON 与环境变量，**不会**按模型名写死上下文上限。
+**Token 用量**（按优先级）：
+1. `input_tokens + cache_creation_input_tokens + cache_read_input_tokens`
+2. 缺失的 cache 字段按 `0` 计
+3. 以上均无则回退到 `used_percentage`
 
-#### 第三方模型
+**上限取值**：
+1. `.context_window.context_window_size`（Claude Code 下发）
+2. `$CLAUDE_CODE_MAX_CONTEXT_TOKENS`
+3. 默认 `200000`
 
-Claude Code 对未识别的模型 ID 常常按 **200k** 窗口处理。若上游实际更大（例如 **Grok 4.5** 的 500k），请在 Claude Code 的 `~/.claude/settings.json` 的 `env` 中配置，然后**重启会话**：
+**图标档位**（按占用比例）：`<30%` / `30–54%` / `55–84%` / `≥85%`
+
+**颜色逻辑**：按剩余 token 量动态调整，而非固定的 70% / 90% 阈值。
+
+脚本只读取 Claude Code 提供的 JSON 和环境变量，不会按模型名硬编码上下文上限。
+
+### 第三方模型
+
+Claude Code 对未识别的模型 ID 默认按 **200k** 窗口处理。如果你的模型实际更大（如 Grok 4.5 为 500k），在 `~/.claude/settings.json` 的 `env` 中配置：
 
 ```json
 {
@@ -101,31 +115,17 @@ Claude Code 对未识别的模型 ID 常常按 **200k** 窗口处理。若上游
 
 | 变量 | 作用 |
 |------|------|
-| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | 让 Claude Code 按该大小假定上下文（影响 `context_window_size` / 状态栏分母，对非 Claude 模型尤其有用）。 |
-| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | 仅用于**自动压缩**计算；单独设置不会替代状态栏上限。 |
+| `CLAUDE_CODE_MAX_CONTEXT_TOKENS` | 告知 Claude Code 上下文上限，影响状态栏分母 |
+| `CLAUDE_CODE_AUTO_COMPACT_WINDOW` | 仅影响自动压缩计算，不直接改变状态栏显示 |
 
-这两个环境变量需要 **Claude Code ≥ 2.1.193** 才会生效（对非 Claude 模型 ID 尤其如此）。数值请按真实模型上限修改。官方说明：[Claude Code 环境变量](https://code.claude.com/docs/en/env-vars)。
-
-## 故意不显示
-
-为保持紧凑，默认不做：
-
-- 拆开的 token 明细（input / output / 缓存命中率芯片）
-- 客户端费用估算（对第三方账单往往不准）
-- Rate limit（偏 Claude.ai 订阅字段）
-- 进度条、多行布局
+需要 **Claude Code ≥ 2.1.193**。配置后重启会话。参考：[Claude Code 环境变量](https://code.claude.com/docs/en/env-vars)。
 
 ## 自定义
 
-### 纯文本模型名
+### 关闭 emoji 图标
 
 ```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "USE_EMOJI_MODEL=0 ~/.claude/statusline.sh"
-  }
-}
+"command": "USE_EMOJI_MODEL=0 ~/.claude/statusline.sh"
 ```
 
 | 默认 | `USE_EMOJI_MODEL=0` |
@@ -134,15 +134,17 @@ Claude Code 对未识别的模型 ID 常常按 **200k** 窗口处理。若上游
 | `🐋 v4 pro` | `DS v4 pro` |
 | `🐋 v4 flash` | `DS v4 flash` |
 
-### 增加模型短名
+### 添加新模型
 
-改 `statusline.sh` 里 `case "$model_id" in`（对 `.model.id` 做子串匹配）。
+编辑 `statusline.sh` 中的 `case "$model_id|$model_name" in` 块，按子串匹配添加你的模型。
 
-### 颜色
+### 调整颜色
 
-脚本顶部 `C_*`，Gruvbox Dark，truecolor ANSI。
+脚本顶部的 `C_*` 变量，Gruvbox Dark 色板，truecolor ANSI。
 
 ## 测试
+
+用 mock JSON 快速验证：
 
 ```sh
 printf '%s\n' '{
@@ -160,24 +162,25 @@ printf '%s\n' '{
   }
 }' | ./statusline.sh
 
+# 语法检查
 bash -n statusline.sh
 ```
 
-在 Windows 上可将 mock JSON 里的路径写成 `"current_dir": "C:/Users/Public"`（正斜杠）。
+Windows 下 mock JSON 的路径写成 `"current_dir": "C:/Users/Public"`（正斜杠）即可。
 
 ## 排错
 
 | 现象 | 可能原因 |
 |------|----------|
-| 状态栏空白 | 未 `chmod +x`，或未接受工作区信任 |
-| 图标变方框 | 终端字体不是 Nerd Font（Windows：用 Windows Terminal + Nerd Font） |
-| Windows 上 `command` 路径异常 | settings 里未转义的 `\` — 改用 `~/...` 或 `C:/...` |
-| Git Bash 里找不到 `jq` | 该 shell 的 PATH 中没有 `jq` |
-| 上下文上限不对 | 以 Claude Code 下发/默认为准；在 CC 侧改 `env` 后重启会话 |
-| 干净提交后仍有 `+N −M` | 升级脚本：行数应来自 git shortstat，而非会话 cost |
-| 时长一直 `0m` | 设置 `refreshInterval`（单位：秒） |
-| 上下文显示 `--` | 首次 API 占用字段出现前属正常 |
-| 无 Git 段 | 不在仓库内，或 git 失败（该段可缺失） |
+| 状态栏无显示 | 未 `chmod +x`，或未接受工作区信任 |
+| 图标显示为方框 / 豆腐块 | 终端字体不是 Nerd Font |
+| Windows 路径不工作 | 使用了未转义的反斜杠，改用 `~/...` 或 `C:/...` |
+| `jq: command not found` | Git Bash 的 PATH 中没有 `jq` |
+| 上下文上限不对 | Claude Code 侧 env 未配或未重启 |
+| 提交后仍显示 `+N −M` | 升级脚本，确保行数来自 git shortstat |
+| 时长始终 `0m` | 未配置 `refreshInterval` |
+| 上下文显示 `--` | 首次会话尚未返回用量数据，正常 |
+| 无 Git 段 | 不在 Git 仓库，或 git 执行失败 |
 
 ## License
 

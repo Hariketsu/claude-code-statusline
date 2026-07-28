@@ -177,7 +177,7 @@ model_name=$(strip_cr "$model_name")
 # Model short name (no brackets; no middle-dot separators)
 # ============================================================================
 model_short=""
-case "$model_id" in
+case "$model_id|$model_name" in
   *v4-pro*|*v4_pro*)
     if [ "$USE_EMOJI_MODEL" = "1" ]; then
       model_short="🐋 v4 pro"
