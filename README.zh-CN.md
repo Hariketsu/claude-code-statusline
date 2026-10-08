@@ -71,14 +71,13 @@ chmod +x ~/.claude/statusline.sh
 
 ### Git 改动行数
 
-分别统计未暂存和已暂存：
+统计工作区（已暂存 + 未暂存）相对 `HEAD` 的改动，同一行在 `git add` 前后都改过也只算一次：
 
 ```sh
-git diff --shortstat            # 未暂存
-git diff --cached --shortstat   # 已暂存
+git diff HEAD --shortstat
 ```
 
-两者累加。提交后工作区干净则自动隐藏 `+N −M`。注意这里用的是**真实 git 数据**，不是会话累计字段 `cost.total_lines_added` / `total_lines_removed`。
+未跟踪文件不计入。提交后工作区干净则自动隐藏 `+N −M`。注意这里用的是**真实 git 数据**，不是会话累计字段 `cost.total_lines_added` / `total_lines_removed`。
 
 ### 上下文
 

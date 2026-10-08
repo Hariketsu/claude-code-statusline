@@ -123,20 +123,21 @@ extract() {
     ((.context_window.current_usage.input_tokens // "null") | tostring),
     ((.context_window.current_usage.cache_creation_input_tokens // "null") | tostring),
     ((.context_window.current_usage.cache_read_input_tokens // "null") | tostring),
+    # Round in jq: shell printf %.0f breaks under comma-decimal locales
     (
       if (.context_window.used_percentage | type) == "number"
-      then (.context_window.used_percentage | tostring)
+      then (.context_window.used_percentage + 0.5 | floor | tostring)
       else "null"
       end
     ),
-    ((.cost.total_duration_ms // 0) | tostring),
+    ((.cost.total_duration_ms // "null") | tostring),
     (
       if (.effort.level | type) == "string" and (.effort.level | length) > 0
       then .effort.level
       else "null"
       end
     )
-  ' 2>/dev/null | tr -d '\r'; } || printf '%s\n' '?' '' '' 'null' 'null' 'null' 'null' 'null' '0' 'null'
+  ' 2>/dev/null | tr -d '\r'; } || printf '%s\n' '?' '' '' 'null' 'null' 'null' 'null' 'null' 'null' 'null'
 }
 
 {
@@ -249,47 +250,48 @@ seg_dir="$(aqua "$dir_base")"
 
 # 3–4. Git branch + real working-tree diff lines
 # Branch/detached: git -C only; failures hide just this segment.
-# Lines: unstaged + staged shortstat (not Claude cost.total_lines_*).
-#   git diff --shortstat
-#   git diff --cached --shortstat
+# Lines: working tree vs HEAD (staged + unstaged, each line counted once;
+#   not Claude cost.total_lines_*). No commits yet → vs empty tree.
+# GIT_OPTIONAL_LOCKS=0: never take index.lock (Claude may be running git).
 # current_dir already normalized for Git Bash (C:/path or /c/path).
 seg_git=""
 seg_lines=""
 if [ -n "${current_dir:-}" ]; then
-  if git -C "$current_dir" rev-parse --git-dir >/dev/null 2>&1; then
-    branch=$(git -C "$current_dir" branch --show-current 2>/dev/null || true)
-    branch=$(strip_cr "$branch")
-    if [ -n "$branch" ]; then
+  # One call for branch + HEAD oid; fails outside a repo.
+  if git_status=$(GIT_OPTIONAL_LOCKS=0 git -C "$current_dir" status --porcelain=v2 --branch --untracked-files=no 2>/dev/null); then
+    branch="" oid=""
+    while IFS= read -r line; do
+      line="${line%$'\r'}"
+      case "$line" in
+        '# branch.oid '*)  oid="${line#\# branch.oid }" ;;
+        '# branch.head '*) branch="${line#\# branch.head }" ;;
+      esac
+    done <<EOF
+$git_status
+EOF
+    if [ -n "$branch" ] && [ "$branch" != "(detached)" ]; then
       seg_git="$(purple "${GIT_ICON} $branch")"
+    elif [ -n "$oid" ] && [ "$oid" != "(initial)" ]; then
+      seg_git="$(purple "${GIT_ICON} ${oid:0:7}")"
+    fi
+
+    if [ "$oid" = "(initial)" ]; then
+      diff_base=$(git -C "$current_dir" hash-object -t tree /dev/null 2>/dev/null || true)
+      diff_base=$(strip_cr "$diff_base")
     else
-      short_sha=$(git -C "$current_dir" rev-parse --short HEAD 2>/dev/null || true)
-      short_sha=$(strip_cr "$short_sha")
-      if [ -n "$short_sha" ]; then
-        seg_git="$(purple "${GIT_ICON} $short_sha")"
-      fi
+      diff_base=HEAD
     fi
 
     lines_added=0
     lines_removed=0
-    unstaged_stat=$(GIT_OPTIONAL_LOCKS=1 git -C "$current_dir" diff --shortstat 2>/dev/null || true)
-    staged_stat=$(GIT_OPTIONAL_LOCKS=1 git -C "$current_dir" diff --cached --shortstat 2>/dev/null || true)
-
-    read -r u_add u_del <<EOF
-$(parse_shortstat "$unstaged_stat")
+    if [ -n "$diff_base" ]; then
+      diff_stat=$(GIT_OPTIONAL_LOCKS=0 git -C "$current_dir" diff "$diff_base" --shortstat 2>/dev/null || true)
+      read -r lines_added lines_removed <<EOF
+$(parse_shortstat "$diff_stat")
 EOF
-    read -r s_add s_del <<EOF
-$(parse_shortstat "$staged_stat")
-EOF
-    u_add=$(strip_cr "${u_add:-}")
-    u_del=$(strip_cr "${u_del:-}")
-    s_add=$(strip_cr "${s_add:-}")
-    s_del=$(strip_cr "${s_del:-}")
-    is_uint "${u_add:-}" || u_add=0
-    is_uint "${u_del:-}" || u_del=0
-    is_uint "${s_add:-}" || s_add=0
-    is_uint "${s_del:-}" || s_del=0
-    lines_added=$(( u_add + s_add ))
-    lines_removed=$(( u_del + s_del ))
+      is_uint "${lines_added:-}" || lines_added=0
+      is_uint "${lines_removed:-}" || lines_removed=0
+    fi
 
     if [ "$lines_added" -gt 0 ]; then
       seg_lines+=$(green "+${lines_added}")
@@ -346,11 +348,8 @@ pct_int=""
 if [ -n "$used" ] && [ "$context_limit" -gt 0 ]; then
   # Rounded integer percent; may exceed 100
   pct_int=$(( (used * 100 + context_limit / 2) / context_limit ))
-elif [ -n "${ctx_pct_raw:-}" ] && [ "$ctx_pct_raw" != "null" ]; then
-  pct_int=$(printf '%.0f' "$ctx_pct_raw" 2>/dev/null) || pct_int=""
-  if ! is_uint "$pct_int"; then
-    pct_int=""
-  fi
+elif is_uint "${ctx_pct_raw:-}"; then
+  pct_int="$ctx_pct_raw"
   # Estimate used from percentage when token breakdown is missing
   if [ -n "$pct_int" ] && [ -z "$used" ] && [ "$context_limit" -gt 0 ]; then
     used=$(( (context_limit * pct_int + 50) / 100 ))
