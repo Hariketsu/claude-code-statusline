@@ -21,6 +21,7 @@ This document records **direction**, not a binding schedule. Items move when the
 - [x] Context as gauge icon + `pct%/limit` (visual tiers 30/55/85; color by remaining tokens)
 - [x] Context limit: `context_window_size` → `$CLAUDE_CODE_MAX_CONTEXT_TOKENS` → `200000`
 - [x] Session duration from `cost.total_duration_ms`
+- [x] Subscription usage limits (5h / 7d % + reset countdown) — only when `.rate_limits` is present
 - [x] Bash 3.2 (macOS) compatible; `set -uo pipefail`; `printf '%s'`
 
 ## Near term
@@ -107,7 +108,7 @@ User checklist:
 ## Long term / maybe never
 
 - Multi-line layout (tried; rejected for reliability and density)
-- Cost / rate-limit / token breakdown by default (noise for third-party APIs)
+- Cost / token breakdown by default (noise for third-party APIs)
 - Heavy TUI configurator (out of scope; use ccstatusline if you need that)
 
 ## Contributing

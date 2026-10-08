@@ -86,6 +86,44 @@ expect_not "no duration → no 0m" "$out" "0m"
 out=$(render '{"model":{"display_name":"M"},"cost":{"total_duration_ms":0}}')
 expect_has "explicit 0 duration" "$out" "0m"
 
+# --- subscription rate limits (5h / 7d) ---
+CLK=$(printf '\363\260\205\220')
+CAL=$(printf '\363\260\203\255')
+now=$(date +%s)
+rl() { # five_pct five_reset_in seven_pct seven_reset_in  (empty → omit window)
+  local j='' w
+  [ -n "$1" ] && j='"five_hour":{"used_percentage":'"$1"',"resets_at":'"$((now + $2))"'}'
+  if [ -n "$3" ]; then
+    w='"seven_day":{"used_percentage":'"$3"',"resets_at":'"$((now + $4))"'}'
+    j="${j:+$j,}$w"
+  fi
+  printf '{"model":{"display_name":"M"},"rate_limits":{%s}}' "$j"
+}
+
+out=$(render "$(rl 42.4 $((3 * 3600 + 12 * 60 + 30)) 18 $((4 * 86400 + 2 * 3600 + 30)))")
+expect_has "5h pct + countdown" "$out" "$CLK 42% 3h12m"
+expect_has "7d pct + countdown" "$out" "$CAL 18% 4d2h"
+
+out=$(render "$(rl 87 $((42 * 60 + 30)) "" 0)")
+expect_has "minutes countdown" "$out" "$CLK 87% 42m"
+expect_not "missing 7d hidden" "$out" "$CAL"
+
+out=$(render "$(rl 10 20 "" 0)")
+expect_has "under a minute shows 1m" "$out" "10% 1m"
+
+out=$(render "$(rl 50 -60 30 $((86400 + 30)))")
+expect_not "expired 5h hidden" "$out" "$CLK"
+expect_has "7d still shown" "$out" "$CAL 30% 1d0h"
+
+out=$(render '{"model":{"display_name":"M"}}')
+expect_not "no rate_limits → no clock" "$out" "$CLK"
+
+raw=$(printf '%s' "$(rl 91 3600 73 86400)" | "$BASH" "$SL")
+expect_has "≥90% red" "$raw" $'\033[38;2;204;36;29m'"$CLK 91%"
+expect_has "≥70% yellow" "$raw" $'\033[38;2;215;153;33m'"$CAL 73%"
+raw=$(printf '%s' "$(rl 69 3600 "" 0)" | "$BASH" "$SL")
+expect_has "<70% dim" "$raw" $'\033[2m'"$CLK 69%"
+
 # --- empty stdin ---
 out=$(render '')
 expect_has "empty input" "$out" "no data"
