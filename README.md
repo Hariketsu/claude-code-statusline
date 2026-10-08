@@ -65,6 +65,7 @@ Restart Claude Code after changing settings.
 | Directory | `my-project` | Basename of `.workspace.current_dir` |
 | Git | ` master +12 −3` | Branch or detached short SHA; line counts from real git |
 | Context | `󰡳 15%/500k` | Token usage and limit |
+| Usage limits | `󰅐 42% 3h12m  󰃭 18% 4d2h` | `.rate_limits` 5h / 7d windows (claude.ai Pro/Max only) |
 | Duration | `1h2m` | `.cost.total_duration_ms` |
 
 Token breakdowns, cost estimates, and progress bars are intentionally omitted to keep the bar compact.
@@ -98,6 +99,15 @@ Display format: Nerd Font icon + `usage/limit`, e.g. `󰡳 15%/500k`.
 **Colors** are based on remaining tokens rather than fixed 70% / 90% usage thresholds.
 
 The script only reads what Claude Code provides (JSON and environment). It never hardcodes model → window-size maps.
+
+### Usage limits
+
+Shown only when Claude Code reports `.rate_limits` — i.e. signed in with a claude.ai Pro/Max subscription, after the first API response. API keys and third-party gateways never see this segment.
+
+- `󰅐` 5-hour window, `󰃭` weekly window: used % + time until reset (`42m` / `3h12m` / `4d2h`)
+- Colors: `≥70%` yellow, `≥90%` red
+- Each window hides on its own when missing or past `resets_at`
+- Countdowns only advance when the script re-runs; keep `refreshInterval` set
 
 ### Third-party models
 
@@ -163,6 +173,9 @@ printf '%s\n' '{
 
 # Syntax check
 bash -n statusline.sh
+
+# Smoke tests (temp git repos + fixture JSON)
+bash tests/run.sh
 ```
 
 On Windows, write mock paths as `"current_dir": "C:/Users/Public"` (forward slashes).

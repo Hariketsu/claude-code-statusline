@@ -65,6 +65,7 @@ chmod +x ~/.claude/statusline.sh
 | 目录 | `my-project` | `.workspace.current_dir` 的 basename |
 | Git | ` master +12 −3` | 分支名或 detached SHA；改动行数来自真实 git |
 | 上下文 | `󰡳 15%/500k` | token 占用与上限 |
+| 用量额度 | `󰅐 42% 3h12m  󰃭 18% 4d2h` | `.rate_limits` 5h / 7d 窗口（仅 claude.ai Pro/Max 订阅） |
 | 时长 | `1h2m` | `.cost.total_duration_ms` |
 
 为保持紧凑，不显示 token 明细、费用估算、进度条等信息。
@@ -98,6 +99,15 @@ git diff HEAD --shortstat
 **颜色逻辑**：按剩余 token 量动态调整，而非固定的 70% / 90% 阈值。
 
 脚本只读取 Claude Code 提供的 JSON 和环境变量，不会按模型名硬编码上下文上限。
+
+### 用量额度
+
+仅当 Claude Code 提供 `.rate_limits` 时显示——即使用 claude.ai Pro/Max 订阅登录，且会话已有首次 API 响应。API Key 和第三方网关不会出现此段。
+
+- `󰅐` 5 小时窗口，`󰃭` 每周窗口：已用百分比 + 距重置时间（`42m` / `3h12m` / `4d2h`）
+- 颜色：`≥70%` 黄，`≥90%` 红
+- 任一窗口缺失或已过 `resets_at` 时单独隐藏
+- 倒计时只在脚本重新运行时更新，请保留 `refreshInterval`
 
 ### 第三方模型
 
@@ -163,6 +173,9 @@ printf '%s\n' '{
 
 # 语法检查
 bash -n statusline.sh
+
+# 冒烟测试（临时 git 仓库 + fixture JSON）
+bash tests/run.sh
 ```
 
 Windows 下 mock JSON 的路径写成 `"current_dir": "C:/Users/Public"`（正斜杠）即可。

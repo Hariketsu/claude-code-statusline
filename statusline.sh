@@ -116,6 +116,18 @@ fi
 extract() {
   # Brace the pipeline so || fallback runs when jq fails (not only when tr fails).
   { printf '%s\n' "$JSON" | jq -r '
+    # Rate-limit window → rounded pct and seconds until reset; expired → null
+    def rl_live(w): (w.resets_at | type) != "number" or w.resets_at > now;
+    def rl_pct(w):
+      if (w.used_percentage | type) == "number" and rl_live(w)
+      then (w.used_percentage + 0.5 | floor | tostring)
+      else "null"
+      end;
+    def rl_left(w):
+      if (w.resets_at | type) == "number" and w.resets_at > now
+      then (w.resets_at - now | floor | tostring)
+      else "null"
+      end;
     (.model.display_name // "?"),
     (.model.id // ""),
     (.workspace.current_dir // ""),
@@ -136,8 +148,12 @@ extract() {
       then .effort.level
       else "null"
       end
-    )
-  ' 2>/dev/null | tr -d '\r'; } || printf '%s\n' '?' '' '' 'null' 'null' 'null' 'null' 'null' 'null' 'null'
+    ),
+    rl_pct(.rate_limits.five_hour),
+    rl_left(.rate_limits.five_hour),
+    rl_pct(.rate_limits.seven_day),
+    rl_left(.rate_limits.seven_day)
+  ' 2>/dev/null | tr -d '\r'; } || printf '%s\n' '?' '' '' 'null' 'null' 'null' 'null' 'null' 'null' 'null' 'null' 'null' 'null' 'null'
 }
 
 {
@@ -151,6 +167,10 @@ extract() {
   read -r ctx_pct_raw
   read -r total_duration_ms
   read -r effort_level
+  read -r rl5_pct
+  read -r rl5_left
+  read -r rl7_pct
+  read -r rl7_left
 } < <(extract)
 
 # Defensive strip (covers non-jq fallback path)
@@ -213,7 +233,7 @@ esac
 
 # ============================================================================
 # Build segments
-# Layout: model · effort · dir · git[+diff] · ctx · time
+# Layout: model · effort · dir · git[+diff] · ctx · rate limits · time
 # ============================================================================
 DSEP="$(dim '·')"   # dimmed separator
 MINUS='−'            # Unicode minus sign U+2212 (not hyphen-minus)
@@ -228,6 +248,9 @@ CTX_ICON_EMPTY=$(printf '\363\260\241\263')
 CTX_ICON_LOW=$(printf '\363\260\241\265')
 CTX_ICON_MID=$(printf '\363\260\212\232')
 CTX_ICON_FULL=$(printf '\363\260\241\264')
+# U+F0150 clock-outline (5h) / U+F00ED calendar (7d) rate-limit windows
+RL5_ICON=$(printf '\363\260\205\220')
+RL7_ICON=$(printf '\363\260\203\255')
 
 # 1. Model (blue, no brackets)
 seg_model="$(blue "$model_short")"
@@ -400,6 +423,44 @@ else
   seg_ctx=$(dim "$(printf '%s --' "$CTX_ICON_EMPTY")")
 fi
 
+# 5b. Subscription rate limits (claude.ai Pro/Max only; absent otherwise)
+# Clock icon = 5h window, calendar icon = 7d window: pct + time until reset (dim)
+# Color by used pct: ≥90 red, ≥70 yellow, else dim
+# Countdown: <1h → 42m, <1d → 3h12m, else 4d2h
+fmt_left() {
+  local s="$1"
+  if [ "$s" -lt 3600 ]; then
+    local m=$(( s / 60 ))
+    [ "$m" -lt 1 ] && m=1
+    printf '%sm' "$m"
+  elif [ "$s" -lt 86400 ]; then
+    printf '%sh%sm' "$(( s / 3600 ))" "$(( (s % 3600) / 60 ))"
+  else
+    printf '%sd%sh' "$(( s / 86400 ))" "$(( (s % 86400) / 3600 ))"
+  fi
+}
+
+rl_window() {
+  local icon="$1" pct="$2" left="$3" label
+  is_uint "$pct" || return 0
+  label="${icon} ${pct}%"
+  if [ "$pct" -ge 90 ]; then
+    label=$(red "$label")
+  elif [ "$pct" -ge 70 ]; then
+    label=$(yellow "$label")
+  else
+    label=$(dim "$label")
+  fi
+  is_uint "$left" && label+=" $(dim "$(fmt_left "$left")")"
+  printf '%s' "$label"
+}
+
+seg_rl=$(rl_window "$RL5_ICON" "${rl5_pct:-}" "${rl5_left:-}")
+seg_rl7=$(rl_window "$RL7_ICON" "${rl7_pct:-}" "${rl7_left:-}")
+if [ -n "$seg_rl7" ]; then
+  seg_rl="${seg_rl:+$seg_rl  }$seg_rl7"
+fi
+
 # 6. Session duration — from Claude Code's built-in cost.total_duration_ms
 seg_time=""
 if is_uint "${total_duration_ms:-}" && [ "$total_duration_ms" -gt 0 ]; then
@@ -425,6 +486,7 @@ out="$seg_model"
 out+=" $DSEP $seg_dir"
 [ -n "$seg_git_lines" ] && out+=" $DSEP $seg_git_lines"
 out+=" $DSEP $seg_ctx"
+[ -n "$seg_rl" ]        && out+=" $DSEP $seg_rl"
 [ -n "$seg_time" ]      && out+=" $DSEP $seg_time"
 
 printf '%s\n' "$out"
