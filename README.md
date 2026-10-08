@@ -71,14 +71,13 @@ Token breakdowns, cost estimates, and progress bars are intentionally omitted to
 
 ### Git line counts
 
-Unstaged and staged changes, counted separately:
+Working tree (staged + unstaged) against `HEAD`, so a line edited both before and after `git add` counts once:
 
 ```sh
-git diff --shortstat            # unstaged
-git diff --cached --shortstat   # staged
+git diff HEAD --shortstat
 ```
 
-Both are summed. A clean working tree after commit hides `+N −M`. These are **real git numbers** — not the session-cumulative fields `cost.total_lines_added` / `total_lines_removed`.
+Untracked files are not counted. A clean working tree after commit hides `+N −M`. These are **real git numbers** — not the session-cumulative fields `cost.total_lines_added` / `total_lines_removed`.
 
 ### Context
 

@@ -17,7 +17,7 @@ This document records **direction**, not a binding schedule. Items move when the
 - [x] Effort level (`󰧑 low|med|high|xhigh|max`) when present
 - [x] Directory basename
 - [x] Git branch / detached short SHA (``, Nerd Font `f418`)
-- [x] **Real** working-tree line counts via `git diff --shortstat` + `git diff --cached --shortstat` (not `cost.total_lines_*`)
+- [x] **Real** working-tree line counts via `git diff HEAD --shortstat` (not `cost.total_lines_*`)
 - [x] Context as gauge icon + `pct%/limit` (visual tiers 30/55/85; color by remaining tokens)
 - [x] Context limit: `context_window_size` → `$CLAUDE_CODE_MAX_CONTEXT_TOKENS` → `200000`
 - [x] Session duration from `cost.total_duration_ms`
@@ -34,7 +34,7 @@ This document records **direction**, not a binding schedule. Items move when the
 
 ### Robustness
 
-- [ ] Smoke tests: fixture JSON files + expected substring checks (CI-friendly)
+- [x] Smoke tests: `bash tests/run.sh` (temp git repos + expected substring checks)
 - [ ] Guard `git` timeouts on huge repos (soft fail → branch only)
 - [ ] Optional short git cache (mtime of `.git/HEAD` / index + small TTL) — only if real lag shows up
 
